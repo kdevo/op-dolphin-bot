@@ -1,18 +1,3 @@
-""" OP-Dolphin-Bot: OpenProject Activities -> Slack (by kdevo)
-This is a Slack Bot that watches for Open Project activities and posts them automagically.
-
-Requirements:
-- Python 3.5 (may also work with >=3.0, totally untested)
-- an always-on running PC/web-server
-
-Configuration:
-- Edit the variables in START CONFIGURATION below
-
-References:
-- Test message look and feel: https://api.slack.com/docs/messages/builder
-- Incoming Webhook: https://api.slack.com/incoming-webhooks
-"""
-
 from string import Template
 import logging
 import json
