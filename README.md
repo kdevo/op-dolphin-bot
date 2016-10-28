@@ -3,7 +3,7 @@ This simple Python-based Slack Bot uses Slack's [Incoming WebHook](https://api.s
 
 In other words: It makes it easy to get notifications about the latest updates in OP.
 
-It is not a plug**in** for Open Project. Instead, it relies on the **external** "interfaces" of OP (currently the Atom feed only).
+It is **not** a plugin for Open Project. Instead, it relies on the external "interfaces" of OP (currently the Atom feed only).
 
 ## Requirements:
 - a 24/7 running web-server or PC (a Raspberry Pi would do the job, too!)
