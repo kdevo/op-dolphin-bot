@@ -14,15 +14,35 @@ from .open_project import OpenProjectURL
 class SlackConnection:
     """ Used for posting messages to Slack """
 
-    def __init__(self, url_hook):
+    def __init__(self, url_hook, max_retries=5, wait_on_fail=5):
         self.url_hook = url_hook
+        self.max_retries = max_retries
+        self.wait_on_fail = wait_on_fail
+        logging.debug("Created a SlackConnection to %s.", self.url_hook)
 
     def post(self, json_message):
-        logging.debug('Message posting in progress. Connecting to "%s" for POST request.', self.url_hook)
-        request = urllib.request.Request(self.url_hook, headers={'Content-type': "application/json"})
-        with urllib.request.urlopen(request, bytes(json_message, 'utf8')) as resp:
-            resp = resp.read().decode('utf8')
-            logging.debug("Response: %s.", resp.upper())
+        retries = 0
+        is_sent = False
+        while not is_sent and (self.max_retries is None or retries <= self.max_retries):
+            if retries > 0:
+                logging.info("Retry #%i.", retries)
+            logging.debug('Message posting in progress. Connecting to Slack for POST request.')
+            request = urllib.request.Request(self.url_hook, headers={'Content-type': "application/json"})
+            try:
+                with urllib.request.urlopen(request, bytes(json_message, 'utf8')) as resp:
+                    resp = resp.read().decode('utf8')
+                    logging.debug("Response: %s.", resp.upper())
+                is_sent = True
+            except urllib.request.HTTPError as http_err:
+                logging.error("Error while executing HTTP request to Slack (Status: %i). "
+                              "More info: %s", http_err.code, http_err)
+                retries += 1
+                time.sleep(self.wait_on_fail)
+            except urllib.request.URLError as url_err:
+                logging.error("Unable to connect to Slack. Probably not connected to the internet or wrong URL."
+                              " More info: %s", url_err)
+                retries += 1
+                time.sleep(self.wait_on_fail)
 
 
 class SlackMessageBuilder:
@@ -34,22 +54,15 @@ class SlackMessageBuilder:
             'username': PROGRAM_NAME,
             'icon_emoji': ":dolphin:",
             'attachments': [{
-                'title': "OpenProject Update",
-                'title_link': "$title_url",
+                'title': "$type_emoji $type (Single Update)",
                 'color': "#$color",
-                'text': "$text",
-                'fields': [
-                    {
-                        'title': "Type",
-                        'value': "$type_emoji $type",
-                        'short': True
-                    },
-                    {
+                'text': "<$title_url|➜ $text>",
+                'fields':
+                    [{
                         'title': "Author",
                         'value': "$author",
-                        'short': True
-                    }
-                ],
+                        'short': False
+                    }],
                 'ts': '$timestamp',
                 'footer': "<{0}|{1} {2}>".format(GITHUB_URL, PROGRAM_NAME, PROGRAM_VERSION),
                 'mrkdwn_in': ['text']
@@ -62,7 +75,7 @@ class SlackMessageBuilder:
             'username': PROGRAM_NAME,
             'icon_emoji': ":dolphin:",
             'text': "$pre_praise Recorded a total of $changes changes in the last $minutes minutes "
-                    "<$base_url|@Open Project>:",
+                    "<$base_url|@OpenProject>. Summary:",
             'attachments': [{
                 'title': "$type_emoji $type ($type_counter)",
                 'title_link': '$activities_filtered_url',
@@ -100,9 +113,11 @@ class SlackMessageBuilder:
         (lambda c: c > 6, "Nice."),
         (lambda c: c > 10, "Wow. :star:"),
         (lambda c: c >= 12, "Huzzah! :star2:"),
-        (lambda c: c >= 12 and random.randint(0, 1) == 1, "Huzzah! :heart_eyes:")
+        (lambda c: c >= 12 and random.randint(0, 1) == 1, "Huzzah! :heart_eyes:"),
+        (lambda c: c >= 14 and 6 > datetime.now().hour >= 0, "Thank you night owl! :full_moon_with_face:")
     ]
-    _FORMAT_ITALIC = ('New', 'In progress', 'Closed', 'On hold', 'Permanent', 'Rejected')
+    _FORMAT_ITALIC = ('New', 'In progress', 'Closed', 'On hold', 'Permanent', 'Rejected',  # Status
+                      'Task', 'Phase', 'Milestone', 'Release', 'Feature', 'Bug')           # Other keywords
     _FORMAT_BOLD = ()  # '#[0-9]*' will print e.g. '#12' in bold
 
     def __init__(self, op_url_builder, max_titles_per_type=3, highlight_keywords=True):

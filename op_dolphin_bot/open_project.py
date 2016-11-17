@@ -19,26 +19,47 @@ class OpenProjectActivities:
         self._update_time = None
         self._last_deliver_time = None
         self._xml_entries = None
-        self._refresh_xml_entries()
-        self._last_deliver_time = self._update_time  # append for testing purposes: "- timedelta(minutes=300)"
+
+        logging.debug("Trying to initially load Atom feed: %s", self._atom_url)
+        if not self._refresh_xml_entries():
+            # There is no implemented way to handle an invalid connection at startup.
+            # Yes, we could do a "retry-strategy", but it makes no sense to start the bot without internet access.
+            raise urllib.request.URLError("Critical: Initial update failed. Check your internet connection.")
+
+        # We refreshed the XML entries above initially.
+        # Those entries are excluded from the first call of "deliver_updates" by marking the entries as delivered:
+        self._last_deliver_time = self._update_time  # append for testing purposes: "- timedelta(minutes=200)"
 
     def deliver_updates(self):
-        self._refresh_xml_entries()
         result = []
-        if self._last_deliver_time < self._update_time:
-            logging.info("Change detected, update time: %s", self._update_time)
-            for entry in self._xml_entries:
-                if self._last_deliver_time < self._convert_time(entry):
-                    result.append(self._build_entry(entry))
-            self._last_deliver_time = self._update_time
+        # Only if refreshing is successful:
+        if self._refresh_xml_entries():
+            # If there are new items:
+            if self._last_deliver_time < self._update_time:
+                logging.info("Got updates, update time: %s", self._update_time)
+                for entry in self._xml_entries:
+                    # Only append the newest items:
+                    if self._last_deliver_time < self._convert_time(entry):
+                        result.append(self._build_entry(entry))
+                self._last_deliver_time = self._update_time
         return result
 
     def _refresh_xml_entries(self):
-        with urllib.request.urlopen(self._atom_url) as atom_file:
-            root = ElemTree.fromstring(atom_file.read().decode('utf8'))
-        self._update_time = self._convert_time(root)
-        if self._last_deliver_time is not None and self._update_time > self._last_deliver_time:
-            self._xml_entries = root.findall('feed:entry', self._PREFIX)
+        try:
+            with urllib.request.urlopen(self._atom_url) as atom_file:
+                root = ElemTree.fromstring(atom_file.read().decode('utf8'))
+            self._update_time = self._convert_time(root)
+            if self._last_deliver_time is not None and self._update_time > self._last_deliver_time:
+                self._xml_entries = root.findall('feed:entry', self._PREFIX)
+            return True
+        except urllib.request.HTTPError as http_err:
+            logging.error("Error while executing HTTP request to OpenProject (Status: %i). "
+                          "More info: %s", http_err.code, http_err)
+            return False
+        except urllib.request.URLError as url_err:
+            logging.error("Unable to read from OpenProject. Probably not connected to the internet or wrong URL."
+                          " More info: %s", url_err)
+            return False
 
     @staticmethod
     def guess_activity_type(url):
@@ -55,10 +76,9 @@ class OpenProjectActivities:
         guessed = None
         for p in enumerate(parts):
             for name in OpenProjectURL.ACTIVITY_FILTERS:
-                if name in p:
-                    if index < p[0]:
-                        guessed = p[1]
-                        index = p[0]
+                if name in p and index < p[0]:
+                    guessed = p[1]
+                    index = p[0]
         return guessed
 
     def _build_entry(self, xml_entry):
@@ -94,11 +114,11 @@ class OpenProjectURL:
         return filter_str
 
     def build_activity_url(self, activity_filters=None):
-        return "{base}/projects/{id}/activity?{filter}"\
+        return "{base}/projects/{id}/activity?{filter}" \
             .format(base=self.base_url, id=self.project_id, filter=self._get_filter_str(activity_filters))
 
     def build_activity_atom_url(self, rss_key, activity_filters=None):
-        return "{base}/projects/{id}/activity.atom?key={key}&{filter}"\
+        return "{base}/projects/{id}/activity.atom?key={key}&{filter}" \
             .format(base=self.base_url, id=self.project_id, key=rss_key, filter=self._get_filter_str(activity_filters))
 
     @staticmethod

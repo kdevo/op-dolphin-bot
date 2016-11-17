@@ -2,11 +2,11 @@
 
 ! External dependency "requests" needed
 
-Tiny utility that lists projects in Open Project by using a trial and error method (brute force).
+Tiny utility that lists projects in OpenProject by using a trial and error method (brute force).
 Why? The API of OP doesn't seem to provide a method to list existing projects, so this is a workaround.
 In this project, it is used to easily find the project ID for the Dolphin Bot.
 
-It also shows how to use basic auth to use the Open Projects API.
+It also shows how to use basic auth to access the OpenProject API.
 """
 
 import time
